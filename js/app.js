@@ -194,12 +194,19 @@ function catBlockHTML(inc, exp, net) {
     <div class="cat-row"><span style="font-weight:700">${tx('netProfit')}</span><span style="font-size:16px;font-weight:700;color:${col}">${sign}฿${fmt(Math.abs(net))}</span></div>
   </div>`;
 }
-function rowItemHTML(r) {
+function rowItemHTML(r, showDetail=true) {
   const info = getTypeInfo(r.type);
+  const hasQty = r.qty && r.qty !== 1;
+  const qtyText = (r.unitPrice && r.qty)
+    ? `${r.qty} × ฿${fmt(r.unitPrice)}`
+    : '';
   return `<div class="row-item">
     <div class="ri-left">
       <div class="ri-desc">${r.desc||'—'}</div>
-      <div class="ri-meta">${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span></div>
+      <div class="ri-meta">
+        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${showDetail && qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
+      </div>
     </div>
     <div class="ri-right">
       <span class="ri-amt ${info.amtCls}">${info.sign}฿${fmt(r.amount)}</span>
@@ -246,13 +253,24 @@ function renderRecordList() {
     : `<div class="empty">${tx('empty')}</div>`;
 }
 function addRecord() {
-  const amount = parseFloat(document.getElementById('rec-amount').value)||0;
+  const unitPrice = parseFloat(document.getElementById('rec-unit-price').value) || 0;
+  const qty       = parseFloat(document.getElementById('rec-qty').value) || 1;
+  const amount    = parseFloat(document.getElementById('rec-amount').value) || 0;
   if(!amount){showToast(tx('errAmount'));return;}
-  records.push({id:nextId++, type:document.getElementById('rec-type').value, amount,
-    desc:document.getElementById('rec-desc').value.trim(),
-    date:document.getElementById('rec-date').value||todayStr()});
+  records.push({
+    id: nextId++,
+    type: document.getElementById('rec-type').value,
+    amount,
+    unitPrice: unitPrice || amount,
+    qty,
+    desc: document.getElementById('rec-desc').value.trim(),
+    date: document.getElementById('rec-date').value||todayStr()
+  });
   saveLocal(); pushToFirebase();
-  document.getElementById('rec-amount').value=''; document.getElementById('rec-desc').value='';
+  document.getElementById('rec-amount').value='';
+  document.getElementById('rec-desc').value='';
+  document.getElementById('rec-unit-price').value='';
+  document.getElementById('rec-qty').value='1';
   showToast(tx('saved')); renderAll();
 }
 function deleteRecord(id) {
@@ -604,9 +622,8 @@ function hideDropdown() {
 }
 
 function confirmAddNew(name) {
-  // บันทึก record ก่อน แล้วค่อยถามเพิ่ม list
   hideDropdown();
-  const price = parseFloat(document.getElementById('rec-amount').value) || 0;
+  const price = parseFloat(document.getElementById('rec-unit-price').value) || parseFloat(document.getElementById('rec-amount').value) || 0;
   const cat   = document.getElementById('rec-type').value.includes('drink') ? 'drink'
               : document.getElementById('rec-type').value.includes('skewer') ? 'skewer' : 'other';
   setTimeout(() => {
@@ -621,9 +638,9 @@ function confirmAddNew(name) {
 // patch addRecord to ask about new menu
 const _origAddRecord = addRecord;
 addRecord = function() {
-  const desc  = document.getElementById('rec-desc').value.trim();
-  const price = parseFloat(document.getElementById('rec-amount').value) || 0;
-  const type  = document.getElementById('rec-type').value;
+  const desc      = document.getElementById('rec-desc').value.trim();
+  const price     = parseFloat(document.getElementById('rec-unit-price').value) || parseFloat(document.getElementById('rec-amount').value) || 0;
+  const type      = document.getElementById('rec-type').value;
   // call original
   _origAddRecord();
   // after save: if desc is new and has price, ask to add to list
