@@ -257,9 +257,10 @@ function addRecord() {
   const qty       = parseFloat(document.getElementById('rec-qty').value) || 1;
   const amount    = parseFloat(document.getElementById('rec-amount').value) || 0;
   if(!amount){showToast(tx('errAmount'));return;}
+  const lastType = document.getElementById('rec-type').value; // ── ข้อ 3: จำประเภท
   records.push({
     id: nextId++,
-    type: document.getElementById('rec-type').value,
+    type: lastType,
     amount,
     unitPrice: unitPrice || amount,
     qty,
@@ -271,6 +272,8 @@ function addRecord() {
   document.getElementById('rec-desc').value='';
   document.getElementById('rec-unit-price').value='';
   document.getElementById('rec-qty').value='1';
+  // คง lastType ไว้ใน select
+  setTimeout(()=>{ const sel=document.getElementById('rec-type'); if(sel) sel.value=lastType; },50);
   showToast(tx('saved')); renderAll();
 }
 function deleteRecord(id) {
@@ -665,17 +668,7 @@ renderRecordTab = function() {
 
 // init menu items
 loadMenuItems();
-if (!menuItems.length) {
-  // seed demo menus
-  menuItems = [
-    { id: nextId++, name: 'ลูกชิ้นปิ้ง', price: 5,   cat: 'skewer' },
-    { id: nextId++, name: 'หมูปิ้ง',      price: 10,  cat: 'skewer' },
-    { id: nextId++, name: 'น้ำผลไม้ปั่น', price: 35,  cat: 'drink'  },
-    { id: nextId++, name: 'ชาไทย',        price: 25,  cat: 'drink'  },
-    { id: nextId++, name: 'น้ำเปล่า',     price: 10,  cat: 'drink'  },
-  ];
-  saveMenuItems();
-}
+// (ไม่มี seed เพื่อไม่ให้รายการกลับมาเมื่อลบแล้ว)
 
 // ─── Quantity × Unit Price Calculation ───────────────────────
 let manualAmountOverride = false;
@@ -725,3 +718,217 @@ renderRecordTab = function() {
   setText('lbl-qty',    isEn ? 'Qty' : 'จำนวน');
   setText('lbl-amount', isEn ? 'Total (THB)' : 'รวม (บาท)');
 };
+
+// ══════════════════════════════════════════════════════════════
+// ข้อ 1: แก้ไขเมนู + แยกหมวด รายรับ/รายจ่าย
+// ══════════════════════════════════════════════════════════════
+function editMenuItem(id) {
+  const m = menuItems.find(x => x.id === id);
+  if (!m) return;
+  const newName  = prompt(settings.lang==='th' ? `ชื่อใหม่ (เดิม: ${m.name})` : `New name (current: ${m.name})`, m.name);
+  if (newName === null) return;
+  const newPrice = prompt(settings.lang==='th' ? `ราคาต่อหน่วยใหม่ (เดิม: ${m.price})` : `New unit price (current: ${m.price})`, m.price);
+  if (newPrice === null) return;
+  m.name  = newName.trim() || m.name;
+  m.price = parseFloat(newPrice) || m.price;
+  saveMenuItems();
+  renderMenuList();
+  showToast(tx('saved'));
+}
+
+// override renderMenuList เพื่อแยกซ้าย-ขวา รายรับ/รายจ่าย
+const _origRenderMenuList = renderMenuList;
+renderMenuList = function() {
+  // populate menu-cat select
+  const catSel = document.getElementById('menu-cat');
+  if (catSel) catSel.innerHTML = tx('catOptions').map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  setText('lbl-menu-list', '📋 ' + (settings.lang==='th' ? 'รายการเมนู / วัตถุดิบ' : 'Menu / Ingredient list'));
+  setText('lbl-menu-name',  settings.lang==='th' ? 'ชื่อ' : 'Name');
+  setText('lbl-menu-price', settings.lang==='th' ? 'ราคา / หน่วย (บาท)' : 'Price / unit (THB)');
+  setText('lbl-menu-cat',   settings.lang==='th' ? 'หมวด' : 'Category');
+  setText('btn-save-menu',  settings.lang==='th' ? '+ บันทึกเมนู' : '+ Save menu');
+  if (!menuFormOpen) setText('btn-toggle-menu', settings.lang==='th' ? '+ เพิ่ม' : '+ Add');
+
+  const container = document.getElementById('menu-items-list');
+  if (!container) return;
+  if (!menuItems.length) {
+    container.innerHTML = `<div class="empty">${settings.lang==='th' ? 'ยังไม่มีเมนู — กด + เพิ่ม' : 'No items yet'}</div>`;
+    return;
+  }
+
+  const isEn = settings.lang === 'en';
+  const incomeItems  = menuItems.filter(m => m.cat === 'skewer' || m.cat === 'drink');
+  const expenseItems = menuItems.filter(m => m.cat === 'expense' || m.cat === 'other');
+  // ถ้าผู้ใช้ไม่ได้แยก cat เป็น expense ให้แยกตาม flag
+  const incList = menuItems.filter(m => m.side !== 'expense');
+  const expList = menuItems.filter(m => m.side === 'expense');
+
+  function menuRow(m) {
+    return `<div class="menu-item-row">
+      <div style="flex:1">
+        <div class="mi-name">${m.name}</div>
+        <div class="mi-meta">฿${fmt(m.price)} / ${isEn?'unit':'หน่วย'}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-outline" onclick="editMenuItem(${m.id})">✏️</button>
+        <button class="btn btn-sm btn-del" onclick="deleteMenuItem(${m.id})">${tx('del')}</button>
+      </div>
+    </div>`;
+  }
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--income-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--income-bg)">
+          💰 ${isEn?'Income (Menu)':'รายรับ (เมนู)'}
+        </div>
+        ${incList.length ? incList.map(menuRow).join('') : `<div class="empty" style="padding:12px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--expense-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--expense-bg)">
+          🛒 ${isEn?'Expense (Ingredients)':'รายจ่าย (วัตถุดิบ)'}
+        </div>
+        ${expList.length ? expList.map(menuRow).join('') : `<div class="empty" style="padding:12px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
+      </div>
+    </div>`;
+};
+
+// patch addMenuItem ให้รับ side จาก type ด้วย
+const _origAddMenuItem = addMenuItem;
+addMenuItem = function(nameOverride, priceOverride, catOverride, sideOverride) {
+  const name  = nameOverride  || document.getElementById('menu-name').value.trim();
+  const price = priceOverride !== undefined ? priceOverride : (parseFloat(document.getElementById('menu-price').value) || 0);
+  const cat   = catOverride   || document.getElementById('menu-cat').value;
+  if (!name) { showToast(tx('errName')); return; }
+  if (menuItems.find(m => m.name.toLowerCase() === name.toLowerCase())) { showToast('มีในลิสต์แล้ว'); return; }
+  // กำหนด side: income / expense
+  const side = sideOverride || (cat === 'other' ? 'expense' : 'income');
+  menuItems.push({ id: nextId++, name, price, cat, side });
+  saveMenuItems(); saveLocal();
+  if (!nameOverride) {
+    document.getElementById('menu-name').value  = '';
+    document.getElementById('menu-price').value = '';
+    if (menuFormOpen) toggleMenuForm();
+  }
+  showToast('✓ เพิ่มเมนูแล้ว');
+  renderMenuList();
+};
+
+// patch _origAddRecord ให้ส่ง side ด้วย
+const _origAddRecordPatch3 = addRecord;
+addRecord = function() {
+  // ดัก side จาก type ก่อน call
+  const type = document.getElementById('rec-type').value;
+  const side = type.startsWith('income') ? 'income' : 'expense';
+  // override addMenuItem ชั่วคราว
+  window._currentSide = side;
+  _origAddRecordPatch3();
+};
+
+// ══════════════════════════════════════════════════════════════
+// ข้อ 2: แก้ไขรายการที่บันทึกไปแล้ว
+// ══════════════════════════════════════════════════════════════
+function editRecord(id) {
+  const r = records.find(x => x.id === id);
+  if (!r) return;
+  const isEn = settings.lang === 'en';
+
+  // สร้าง modal แก้ไข
+  let modal = document.getElementById('edit-record-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'edit-record-modal';
+    modal.className = 'modal-overlay';
+    modal.onclick = e => { if(e.target===modal) modal.style.display='none'; };
+    document.body.appendChild(modal);
+  }
+
+  const typeOpts = tx('recTypes').map(([v,l])=>`<option value="${v}" ${v===r.type?'selected':''}>${l}</option>`).join('');
+  modal.innerHTML = `<div class="modal-box">
+    <div class="modal-title">✏️ ${isEn?'Edit record':'แก้ไขรายการ'}</div>
+    <div class="form-group">
+      <label>${isEn?'Type':'ประเภท'}</label>
+      <select id="er-type">${typeOpts}</select>
+    </div>
+    <div class="form-group">
+      <label>${isEn?'Description':'รายละเอียด'}</label>
+      <input type="text" id="er-desc" value="${r.desc||''}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>${isEn?'Price/unit':'ราคา/หน่วย'}</label>
+        <input type="number" id="er-unit-price" value="${r.unitPrice||r.amount}" inputmode="decimal" oninput="erCalc()">
+      </div>
+      <div class="form-group">
+        <label>${isEn?'Qty':'จำนวน'}</label>
+        <input type="number" id="er-qty" value="${r.qty||1}" inputmode="decimal" oninput="erCalc()">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>${isEn?'Total (THB)':'รวม (บาท)'}</label>
+      <input type="number" id="er-amount" value="${r.amount}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label>${isEn?'Date':'วันที่'}</label>
+      <input type="date" id="er-date" value="${r.date}">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+      <button class="btn btn-outline" onclick="document.getElementById('edit-record-modal').style.display='none'">${isEn?'Cancel':'ยกเลิก'}</button>
+      <button class="btn btn-primary" style="width:auto" onclick="saveEditRecord(${id})">${isEn?'💾 Save':'💾 บันทึก'}</button>
+    </div>
+  </div>`;
+  modal.style.display = 'flex';
+}
+
+function erCalc() {
+  const up = parseFloat(document.getElementById('er-unit-price').value)||0;
+  const q  = parseFloat(document.getElementById('er-qty').value)||1;
+  if(up>0) document.getElementById('er-amount').value = Math.round(up*q);
+}
+
+function saveEditRecord(id) {
+  const r = records.find(x => x.id === id);
+  if (!r) return;
+  r.type      = document.getElementById('er-type').value;
+  r.desc      = document.getElementById('er-desc').value.trim();
+  r.unitPrice = parseFloat(document.getElementById('er-unit-price').value)||0;
+  r.qty       = parseFloat(document.getElementById('er-qty').value)||1;
+  r.amount    = parseFloat(document.getElementById('er-amount').value)||0;
+  r.date      = document.getElementById('er-date').value;
+  saveLocal(); pushToFirebase();
+  document.getElementById('edit-record-modal').style.display='none';
+  showToast(tx('saved')); renderAll();
+}
+
+// ── เพิ่มปุ่ม edit ใน rowItemHTML ──
+const _origRowItemHTML = rowItemHTML;
+rowItemHTML = function(r, showDetail=true) {
+  const info = getTypeInfo(r.type);
+  const qtyText = (r.unitPrice && r.qty && r.qty !== 1)
+    ? `${r.qty} × ฿${fmt(r.unitPrice)}` : '';
+  return `<div class="row-item">
+    <div class="ri-left">
+      <div class="ri-desc">${r.desc||'—'}</div>
+      <div class="ri-meta">
+        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${showDetail && qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
+      </div>
+    </div>
+    <div class="ri-right">
+      <span class="ri-amt ${info.amtCls}">${info.sign}฿${fmt(r.amount)}</span>
+      <button class="btn btn-sm btn-outline" onclick="editRecord(${r.id})">✏️</button>
+      <button class="btn btn-sm btn-del" onclick="deleteRecord(${r.id})">${tx('del')}</button>
+    </div>
+  </div>`;
+};
+
+// ══════════════════════════════════════════════════════════════
+// ข้อ 4: ปุ่ม Refresh sync จาก Firebase
+// ══════════════════════════════════════════════════════════════
+async function refreshSync() {
+  if (!db) { showToast(settings.lang==='th'?'ยังไม่ได้เชื่อม Firebase':'Firebase not connected'); return; }
+  showToast(settings.lang==='th'?'⟳ กำลังโหลด...':'⟳ Syncing...');
+  await syncFromFirebase();
+  renderAll();
+  showToast(settings.lang==='th'?'✓ อัปเดตแล้ว':'✓ Updated');
+}
