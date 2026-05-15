@@ -505,6 +505,20 @@ let menuFormOpen = false;
 
 function loadMenuItems() {
   menuItems = JSON.parse(localStorage.getItem('skewer_menus') || '[]');
+  // migrate cat เก่า (skewer/drink/other) → ใหม่ (income-skewer ฯลฯ)
+  let migrated = false;
+  menuItems.forEach(m => {
+    if (!m.cat || m.cat === 'skewer' || m.cat === 'drink' || m.cat === 'other') {
+      if (m.side === 'income') {
+        m.cat = m.cat === 'drink' ? 'income-drink' : 'income-skewer';
+      } else {
+        m.cat = m.cat === 'drink' ? 'expense-drink'
+              : m.cat === 'other' ? 'expense-other' : 'expense-skewer';
+      }
+      migrated = true;
+    }
+  });
+  if (migrated) localStorage.setItem('skewer_menus', JSON.stringify(menuItems));
 }
 function saveMenuItems() {
   localStorage.setItem('skewer_menus', JSON.stringify(menuItems));
@@ -540,7 +554,7 @@ function addMenuItem(nameOverride, priceOverride, catOverride) {
 }
 
 function deleteMenuItem(id) {
-  menuItems = menuItems.filter(m => m.id !== id);
+  menuItems = menuItems.filter(x => x.id !== id);
   saveMenuItems(); pushToFirebase();
   renderMenuList();
   showToast(tx('deleted'));
@@ -554,7 +568,7 @@ function renderMenuList() {
   setText('lbl-menu-list',  '📋 ' + (isEn ? 'Menu / Ingredient list' : 'รายการเมนู / วัตถุดิบ'));
   setText('lbl-menu-name',  isEn ? 'Item' : 'รายการ');
   setText('lbl-menu-price', isEn ? 'Price / unit (THB)': 'ราคา / หน่วย (บาท)');
-  setText('lbl-menu-cat',   isEn ? 'Category'          : 'หมวด');
+  setText('lbl-menu-cat',   isEn ? 'Type'              : 'ประเภท');
   setText('btn-save-menu',  isEn ? '+ Save menu'       : '+ บันทึกเมนู');
   if (!menuFormOpen) setText('btn-toggle-menu', isEn ? '+ Add' : '+ เพิ่ม');
 
@@ -665,6 +679,7 @@ function hideDropdown() {
 function confirmAddNew(name) {
   hideDropdown();
   const price = parseFloat(document.getElementById('rec-unit-price').value) || parseFloat(document.getElementById('rec-amount').value) || 0;
+  const type  = document.getElementById('rec-type').value; // ใช้ type เป็น cat โดยตรง
   const cat   = document.getElementById('rec-type').value.includes('drink') ? 'drink'
               : document.getElementById('rec-type').value.includes('skewer') ? 'skewer' : 'other';
   setTimeout(() => {
@@ -684,14 +699,14 @@ addRecord = function() {
   const type      = document.getElementById('rec-type').value;
   // call original
   _origAddRecord();
-  // after save: if desc is new and has price, ask to add to list
-  if (desc && price && !menuItems.find(m => m.name.toLowerCase() === desc.toLowerCase())) {
+  // after save: if desc is new, ask to add to list — ใช้ type เป็น cat โดยตรง
+  if (desc && price && !menuItems.find(m => m.name.toLowerCase() === desc.toLowerCase() && m.cat === type)) {
     setTimeout(() => {
       if (confirm((settings.lang === 'th'
         ? `เพิ่ม "${desc}" ลงในลิสต์เมนูด้วยราคา ฿${fmt(price)} ไหม?`
         : `Add "${desc}" to menu list with price ฿${fmt(price)}?`))) {
-        const cat = type.includes('drink') ? 'drink' : type.includes('skewer') ? 'skewer' : 'other';
-        addMenuItem(desc, price, cat);
+        const side = type.startsWith('income') ? 'income' : 'expense';
+        addMenuItem(desc, price, type, side);
       }
     }, 300);
   }
@@ -920,4 +935,39 @@ async function refreshSync() {
   await syncFromFirebase();
   renderAll();
   showToast(settings.lang==='th'?'✓ อัปเดตแล้ว':'✓ Updated');
+}
+
+// ══════════════════════════════════════════════════════════════
+// MIGRATE: สร้าง menuItems จาก records ที่มีอยู่แล้ว
+// รันครั้งเดียวเมื่อกดปุ่ม — ไม่รันอัตโนมัติ
+// ══════════════════════════════════════════════════════════════
+function migrateMenuFromRecords() {
+  const isEn = settings.lang === 'en';
+  let added = 0;
+
+  records.forEach(r => {
+    if (!r.desc || !r.desc.trim()) return;
+    const name = r.desc.trim();
+    const cat  = r.type; // ใช้ type เป็น cat โดยตรง เช่น 'income-skewer'
+    const side = r.type.startsWith('income') ? 'income' : 'expense';
+    const price = r.unitPrice || r.amount || 0;
+
+    // ข้ามถ้ามีชื่อ + cat เดียวกันแล้ว
+    const exists = menuItems.find(
+      m => m.name.toLowerCase() === name.toLowerCase() && m.cat === cat
+    );
+    if (exists) return;
+
+    menuItems.push({ id: nextId++, name, price, cat, side });
+    added++;
+  });
+
+  if (added > 0) {
+    saveMenuItems();
+    pushToFirebase();
+    renderMenuList();
+    showToast(`✓ ${isEn ? `Added ${added} items from records` : `เพิ่ม ${added} รายการจากประวัติการบันทึก`}`);
+  } else {
+    showToast(isEn ? 'No new items to add' : 'ไม่มีรายการใหม่ที่ต้องเพิ่ม');
+  }
 }

@@ -129,7 +129,7 @@
             </div>
           </div>
           <div class="form-group" style="margin-top:10px;margin-bottom:0">
-            <label id="lbl-menu-cat">หมวด</label>
+            <label id="lbl-menu-cat">ประเภท</label>
             <select id="menu-cat">
               <option value="income-skewer">รายรับ — ลูกชิ้น</option>
               <option value="income-drink">รายรับ — น้ำ</option>
@@ -272,6 +272,7 @@
         <button class="btn btn-outline" onclick="exportData()" id="btn-export">📤 Export JSON</button>
         <button class="btn btn-outline" onclick="importData()" id="btn-import">📥 Import JSON</button>
         <button class="btn btn-danger-outline" onclick="runManualCleanup()" id="btn-cleanup">🗑️ ลบข้อมูลเก่า</button>
+        <button class="btn btn-outline" onclick="migrateMenuFromRecords()" id="btn-migrate">🔄 สร้างลิสต์จากประวัติ</button>
       </div>
       <input type="file" id="import-file" accept=".json" style="display:none" onchange="handleImport(event)">
     </div>
