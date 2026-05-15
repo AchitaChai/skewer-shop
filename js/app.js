@@ -603,19 +603,26 @@ let dropdownTimeout = null;
 
 function onDescInput() {
   clearTimeout(dropdownTimeout);
-  const q = document.getElementById('rec-desc').value.trim().toLowerCase();
-  const dd = document.getElementById('desc-dropdown');
-  const type = document.getElementById('rec-type').value;
+  const q    = document.getElementById('rec-desc').value.trim().toLowerCase();
+  const dd   = document.getElementById('desc-dropdown');
+  const type = document.getElementById('rec-type').value; // เช่น 'income-skewer'
 
-  // กรอง menuItems ตาม query และหมวดที่เลือก
-  const isIncome = type.startsWith('income');
+  // กรองเฉพาะรายการที่ cat ตรงกับ recType ที่เลือก
   let matches = menuItems.filter(m => {
-    const catMatch = type.includes('skewer') ? m.cat === 'skewer'
-                   : type.includes('drink')  ? m.cat === 'drink'
-                   : true;
+    const catMatch = m.cat === type; // ตรงกันเลย เช่น cat='income-skewer' ตรงกับ type='income-skewer'
     const nameMatch = !q || m.name.toLowerCase().includes(q);
     return catMatch && nameMatch;
   });
+
+  // ถ้าไม่มีที่ตรง cat เป๊ะ ให้ fallback กรองแค่ side (income/expense)
+  if (!matches.length) {
+    const side = type.startsWith('income') ? 'income' : 'expense';
+    matches = menuItems.filter(m => {
+      const sideMatch = (m.side === side) || (!m.side && type.startsWith('income') ? m.cat !== 'expense' : m.cat === 'expense');
+      const nameMatch = !q || m.name.toLowerCase().includes(q);
+      return sideMatch && nameMatch;
+    });
+  }
 
   if (!matches.length && !q) { dd.style.display = 'none'; return; }
 
