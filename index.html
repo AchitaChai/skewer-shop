@@ -120,7 +120,7 @@
         <div id="menu-form" style="display:none;margin-bottom:12px">
           <div class="form-row">
             <div class="form-group" style="margin-bottom:0">
-              <label id="lbl-menu-name">ชื่อ</label>
+              <label id="lbl-menu-name">รายการ</label>
               <input type="text" id="menu-name" placeholder="เช่น ลูกชิ้น">
             </div>
             <div class="form-group" style="margin-bottom:0">
@@ -130,7 +130,13 @@
           </div>
           <div class="form-group" style="margin-top:10px;margin-bottom:0">
             <label id="lbl-menu-cat">หมวด</label>
-            <select id="menu-cat"></select>
+            <select id="menu-cat">
+              <option value="income-skewer">รายรับ — ลูกชิ้น</option>
+              <option value="income-drink">รายรับ — น้ำ</option>
+              <option value="expense-skewer">รายจ่าย — วัตถุดิบลูกชิ้น</option>
+              <option value="expense-drink">รายจ่าย — วัตถุดิบน้ำ</option>
+              <option value="expense-other">รายจ่าย — ค่าใช้จ่ายอื่นๆ</option>
+            </select>
           </div>
           <button class="btn btn-primary" onclick="addMenuItem()" id="btn-save-menu" style="margin-top:10px">+ บันทึกเมนู</button>
         </div>

@@ -150,12 +150,20 @@ async function syncFromFirebase() {
   if(!db) return;
   try {
     const snap = await db.collection('data').doc('main').get();
-    if(snap.exists){ const d=snap.data(); records=d.records||records; stocks=d.stocks||stocks; nextId=Math.max(nextId,d.nextId||1); saveLocal(); }
+    if(snap.exists){
+      const d=snap.data();
+      records   = d.records   || records;
+      stocks    = d.stocks    || stocks;
+      menuItems = d.menuItems || menuItems;
+      nextId    = Math.max(nextId, d.nextId||1);
+      saveLocal();
+      saveMenuItems();
+    }
   } catch(e){}
 }
 async function pushToFirebase() {
   if(!db) return;
-  try { await db.collection('data').doc('main').set({records,stocks,nextId}); } catch(e){}
+  try { await db.collection('data').doc('main').set({records, stocks, menuItems, nextId}); } catch(e){}
 }
 
 function calcStats(recs) {
@@ -512,7 +520,9 @@ function toggleMenuForm() {
 function addMenuItem(nameOverride, priceOverride, catOverride) {
   const name  = nameOverride  || document.getElementById('menu-name').value.trim();
   const price = priceOverride !== undefined ? priceOverride : (parseFloat(document.getElementById('menu-price').value) || 0);
-  const cat   = catOverride   || document.getElementById('menu-cat').value;
+  const catVal = catOverride || document.getElementById('menu-cat').value;
+  // แปลง recType value → side
+  const cat = catVal;
   if (!name) { showToast(tx('errName')); return; }
   // ถ้ามีอยู่แล้วในลิสต์ ไม่เพิ่มซ้ำ
   if (menuItems.find(m => m.name.toLowerCase() === name.toLowerCase())) {
@@ -531,40 +541,61 @@ function addMenuItem(nameOverride, priceOverride, catOverride) {
 
 function deleteMenuItem(id) {
   menuItems = menuItems.filter(m => m.id !== id);
-  saveMenuItems();
+  saveMenuItems(); pushToFirebase();
   renderMenuList();
   showToast(tx('deleted'));
 }
 
 function renderMenuList() {
-  // populate menu-cat select
+  const isEn = settings.lang === 'en';
+  // populate selects
   const catSel = document.getElementById('menu-cat');
-  if (catSel) {
-    catSel.innerHTML = tx('catOptions').map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
-  }
-  setText('lbl-menu-list', '📋 ' + (settings.lang === 'th' ? 'รายการเมนู / วัตถุดิบ' : 'Menu / Ingredient list'));
-  setText('lbl-menu-name',  settings.lang === 'th' ? 'ชื่อ' : 'Name');
-  setText('lbl-menu-price', settings.lang === 'th' ? 'ราคาปกติ (บาท)' : 'Default price (THB)');
-  setText('lbl-menu-cat',   settings.lang === 'th' ? 'หมวด' : 'Category');
-  setText('btn-save-menu',  settings.lang === 'th' ? '+ บันทึกเมนู' : '+ Save menu');
-  if (!menuFormOpen) setText('btn-toggle-menu', settings.lang === 'th' ? '+ เพิ่ม' : '+ Add');
+  if (catSel) catSel.innerHTML = tx('recTypes').map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  setText('lbl-menu-list',  '📋 ' + (isEn ? 'Menu / Ingredient list' : 'รายการเมนู / วัตถุดิบ'));
+  setText('lbl-menu-name',  isEn ? 'Item' : 'รายการ');
+  setText('lbl-menu-price', isEn ? 'Price / unit (THB)': 'ราคา / หน่วย (บาท)');
+  setText('lbl-menu-cat',   isEn ? 'Category'          : 'หมวด');
+  setText('btn-save-menu',  isEn ? '+ Save menu'       : '+ บันทึกเมนู');
+  if (!menuFormOpen) setText('btn-toggle-menu', isEn ? '+ Add' : '+ เพิ่ม');
 
-  const catLabel = c => tx('catOptions').find(([v]) => v === c)?.[1] || c;
   const container = document.getElementById('menu-items-list');
   if (!container) return;
   if (!menuItems.length) {
-    container.innerHTML = `<div class="empty">${settings.lang === 'th' ? 'ยังไม่มีเมนู — กด + เพิ่ม เพื่อตั้งรายการไว้' : 'No items yet — tap + Add to create a list'}</div>`;
+    container.innerHTML = `<div class="empty">${isEn ? 'No items yet — tap + Add' : 'ยังไม่มีเมนู — กด + เพิ่ม'}</div>`;
     return;
   }
-  container.innerHTML = menuItems.map(m => `
-    <div class="menu-item-row">
+
+  function menuRow(m) {
+    return `<div class="menu-item-row">
       <div style="flex:1">
         <div class="mi-name">${m.name}</div>
-        <div class="mi-meta">${catLabel(m.cat)}</div>
+        <div class="mi-meta">฿${fmt(m.price)} / ${isEn?'unit':'หน่วย'}</div>
       </div>
-      <div class="mi-price">฿${fmt(m.price)}</div>
-      <button class="btn btn-sm btn-del" onclick="deleteMenuItem(${m.id})">${tx('del')}</button>
-    </div>`).join('');
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        <button class="btn btn-sm btn-outline" onclick="editMenuItem(${m.id})">✏️</button>
+        <button class="btn btn-sm btn-del" onclick="deleteMenuItem(${m.id})">${tx('del')}</button>
+      </div>
+    </div>`;
+  }
+
+  const incList = menuItems.filter(m => m.side !== 'expense');
+  const expList = menuItems.filter(m => m.side === 'expense');
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--income-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--income-bg)">
+          💰 ${isEn?'Income (Menu)':'รายรับ (เมนู)'}
+        </div>
+        ${incList.length ? incList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--expense-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--expense-bg)">
+          🛒 ${isEn?'Expense (Ingredients/Other)':'รายจ่าย (วัตถุดิบ/อื่นๆ)'}
+        </div>
+        ${expList.length ? expList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
+      </div>
+    </div>`;
 }
 
 // ─── Autocomplete Dropdown ────────────────────────────────────
@@ -731,80 +762,31 @@ function editMenuItem(id) {
   if (newPrice === null) return;
   m.name  = newName.trim() || m.name;
   m.price = parseFloat(newPrice) || m.price;
-  saveMenuItems();
+  saveMenuItems(); pushToFirebase();
   renderMenuList();
   showToast(tx('saved'));
 }
 
-// override renderMenuList เพื่อแยกซ้าย-ขวา รายรับ/รายจ่าย
-const _origRenderMenuList = renderMenuList;
-renderMenuList = function() {
-  // populate menu-cat select
-  const catSel = document.getElementById('menu-cat');
-  if (catSel) catSel.innerHTML = tx('catOptions').map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
-  setText('lbl-menu-list', '📋 ' + (settings.lang==='th' ? 'รายการเมนู / วัตถุดิบ' : 'Menu / Ingredient list'));
-  setText('lbl-menu-name',  settings.lang==='th' ? 'ชื่อ' : 'Name');
-  setText('lbl-menu-price', settings.lang==='th' ? 'ราคา / หน่วย (บาท)' : 'Price / unit (THB)');
-  setText('lbl-menu-cat',   settings.lang==='th' ? 'หมวด' : 'Category');
-  setText('btn-save-menu',  settings.lang==='th' ? '+ บันทึกเมนู' : '+ Save menu');
-  if (!menuFormOpen) setText('btn-toggle-menu', settings.lang==='th' ? '+ เพิ่ม' : '+ Add');
-
-  const container = document.getElementById('menu-items-list');
-  if (!container) return;
-  if (!menuItems.length) {
-    container.innerHTML = `<div class="empty">${settings.lang==='th' ? 'ยังไม่มีเมนู — กด + เพิ่ม' : 'No items yet'}</div>`;
-    return;
-  }
-
-  const isEn = settings.lang === 'en';
-  const incomeItems  = menuItems.filter(m => m.cat === 'skewer' || m.cat === 'drink');
-  const expenseItems = menuItems.filter(m => m.cat === 'expense' || m.cat === 'other');
-  // ถ้าผู้ใช้ไม่ได้แยก cat เป็น expense ให้แยกตาม flag
-  const incList = menuItems.filter(m => m.side !== 'expense');
-  const expList = menuItems.filter(m => m.side === 'expense');
-
-  function menuRow(m) {
-    return `<div class="menu-item-row">
-      <div style="flex:1">
-        <div class="mi-name">${m.name}</div>
-        <div class="mi-meta">฿${fmt(m.price)} / ${isEn?'unit':'หน่วย'}</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-outline" onclick="editMenuItem(${m.id})">✏️</button>
-        <button class="btn btn-sm btn-del" onclick="deleteMenuItem(${m.id})">${tx('del')}</button>
-      </div>
-    </div>`;
-  }
-
-  container.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--income-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--income-bg)">
-          💰 ${isEn?'Income (Menu)':'รายรับ (เมนู)'}
-        </div>
-        ${incList.length ? incList.map(menuRow).join('') : `<div class="empty" style="padding:12px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--expense-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--expense-bg)">
-          🛒 ${isEn?'Expense (Ingredients)':'รายจ่าย (วัตถุดิบ)'}
-        </div>
-        ${expList.length ? expList.map(menuRow).join('') : `<div class="empty" style="padding:12px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
-      </div>
-    </div>`;
-};
+// renderMenuList — ดูฟังก์ชั่นหลักด้านบน (เขียนใหม่แล้ว)
 
 // patch addMenuItem ให้รับ side จาก type ด้วย
 const _origAddMenuItem = addMenuItem;
 addMenuItem = function(nameOverride, priceOverride, catOverride, sideOverride) {
   const name  = nameOverride  || document.getElementById('menu-name').value.trim();
   const price = priceOverride !== undefined ? priceOverride : (parseFloat(document.getElementById('menu-price').value) || 0);
-  const cat   = catOverride   || document.getElementById('menu-cat').value;
+  const catVal = catOverride || document.getElementById('menu-cat').value;
+  // แปลง recType value → side
+  const cat = catVal;
   if (!name) { showToast(tx('errName')); return; }
   if (menuItems.find(m => m.name.toLowerCase() === name.toLowerCase())) { showToast('มีในลิสต์แล้ว'); return; }
-  // กำหนด side: income / expense
-  const side = sideOverride || (cat === 'other' ? 'expense' : 'income');
-  menuItems.push({ id: nextId++, name, price, cat, side });
-  saveMenuItems(); saveLocal();
+  // กำหนด side จาก cat (recType format) หรือ _currentSide
+  const detectedSide = catVal.startsWith('income') ? 'income'
+                     : catVal.startsWith('expense') ? 'expense'
+                     : window._currentSide || 'income';
+  const side = sideOverride || detectedSide;
+  window._currentSide = null; // reset
+  menuItems.push({ id: nextId++, name, price, cat: catVal, side });
+  saveMenuItems(); saveLocal(); pushToFirebase();
   if (!nameOverride) {
     document.getElementById('menu-name').value  = '';
     document.getElementById('menu-price').value = '';
