@@ -59,8 +59,16 @@
 
     <!-- SUMMARY TAB -->
     <section id="sec-summary" class="tab-section active">
+      <!-- date picker -->
+      <div class="card" style="padding:10px 16px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-size:13px;font-weight:700;color:var(--text2);margin:0" id="lbl-sum-date">📅 เลือกวันที่</label>
+          <input type="date" id="summary-date" onchange="renderSummary()" style="flex:1;min-width:140px;font-size:13px;padding:6px 10px">
+          <button class="btn btn-sm btn-outline" onclick="setSummaryToday()" id="btn-sum-today">วันนี้</button>
+        </div>
+      </div>
       <div class="metric-grid" id="summary-metrics"></div>
-      <div class="two-col">
+      <div class="three-col">
         <div class="card">
           <div class="card-title">🍢 <span id="lbl-skewer">ลูกชิ้นปิ้ง</span></div>
           <div id="skewer-summary"></div>
@@ -68,6 +76,10 @@
         <div class="card">
           <div class="card-title">🧋 <span id="lbl-drink">เมนูน้ำ</span></div>
           <div id="drink-summary"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📦 <span id="lbl-other-sum">อื่นๆ</span></div>
+          <div id="other-summary"></div>
         </div>
       </div>
       <div class="card" style="margin-top:1rem">
@@ -136,6 +148,7 @@
             <select id="menu-cat">
               <option value="income-skewer">รายรับ — ลูกชิ้น</option>
               <option value="income-drink">รายรับ — น้ำ</option>
+              <option value="income-other">รายรับ — อื่นๆ</option>
               <option value="expense-skewer">รายจ่าย — วัตถุดิบลูกชิ้น</option>
               <option value="expense-drink">รายจ่าย — วัตถุดิบน้ำ</option>
               <option value="expense-other">รายจ่าย — ค่าใช้จ่ายอื่นๆ</option>
@@ -199,7 +212,7 @@
 
     <!-- REPORT TAB -->
     <section id="sec-report" class="tab-section">
-      <div class="period-toggle">
+      <div class="period-toggle" style="margin-bottom:14px">
         <button class="period-btn active" onclick="setPeriod('week')" id="btn-week">รายสัปดาห์</button>
         <button class="period-btn" onclick="setPeriod('month')" id="btn-month">รายเดือน</button>
         <button class="period-btn" onclick="setPeriod('custom')" id="btn-custom">กำหนดเอง</button>
@@ -217,16 +230,44 @@
         </div>
         <button class="btn btn-primary" onclick="renderReport()" id="btn-apply">ดูรายงาน</button>
       </div>
-      <div class="metric-grid" id="report-metrics"></div>
-      <div class="card">
-        <div class="card-title" id="lbl-chart">กราฟรายรับ vs รายจ่าย</div>
-        <div id="chart-container"></div>
-        <div class="chart-legend">
-          <span><span class="dot dot-income"></span><span id="leg-income">รายรับ</span></span>
-          <span><span class="dot dot-expense"></span><span id="leg-expense">รายจ่าย</span></span>
+      <!-- week center picker -->
+      <div id="week-picker-row" style="margin-bottom:12px">
+        <div class="card" style="padding:10px 16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label style="font-size:13px;font-weight:700;color:var(--text2);margin:0" id="lbl-pick-week">📅 วันกลาง</label>
+            <input type="date" id="report-week-center" onchange="renderReport()" style="flex:1;font-size:13px;padding:6px 10px">
+            <button class="btn btn-sm btn-outline" onclick="setWeekToday()" id="btn-week-today">วันนี้</button>
+          </div>
         </div>
       </div>
-      <div class="two-col" style="margin-top:1rem">
+      <!-- month picker (แสดงเฉพาะตอนเลือกรายเดือน) -->
+      <div id="month-picker-row" style="display:none;margin-bottom:12px">
+        <div class="card" style="padding:10px 16px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:13px;font-weight:700;color:var(--text2);margin:0" id="lbl-pick-month">📅 เลือกเดือน</label>
+            <input type="month" id="report-month-picker" onchange="renderReport()" style="flex:1;font-size:13px;padding:6px 10px">
+          </div>
+        </div>
+      </div>
+      <div class="metric-grid" id="report-metrics"></div>
+      <div class="card" style="padding-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" id="lbl-chart" style="margin:0">กราฟรายรับ vs รายจ่าย</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <label style="font-size:11px;color:var(--text3);margin:0" id="lbl-ymax">สูงสุด ฿</label>
+            <input type="number" id="chart-ymax" placeholder="อัตโนมัติ" onchange="renderReport()"
+              style="width:90px;font-size:12px;padding:4px 8px">
+          </div>
+        </div>
+        <div id="chart-scroll-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <div id="chart-container" style="min-width:100%"></div>
+        </div>
+        <div class="chart-legend" style="margin-top:6px">
+          <span><span class="chart-legend-bar" style="background:linear-gradient(180deg,#4ECDC4,#2BB5AA)"></span><span id="leg-income">รายรับ</span></span>
+          <span><span class="chart-legend-bar" style="background:linear-gradient(180deg,#FF9E9E,#E05555)"></span><span id="leg-expense">รายจ่าย</span></span>
+        </div>
+      </div>
+      <div class="three-col" style="margin-top:1rem">
         <div class="card">
           <div class="card-title">🍢 <span id="lbl-skewer-rpt">ลูกชิ้น</span></div>
           <div id="skewer-report"></div>
@@ -234,6 +275,10 @@
         <div class="card">
           <div class="card-title">🧋 <span id="lbl-drink-rpt">น้ำ</span></div>
           <div id="drink-report"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📦 <span id="lbl-other-rpt">อื่นๆ</span></div>
+          <div id="other-report"></div>
         </div>
       </div>
     </section>

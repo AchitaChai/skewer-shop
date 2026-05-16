@@ -19,6 +19,7 @@ const TR = {
     recTypes:[
       ['income-skewer','รายรับ — ลูกชิ้น'],
       ['income-drink','รายรับ — น้ำ'],
+      ['income-other','รายรับ — อื่นๆ'],
       ['expense-skewer','รายจ่าย — วัตถุดิบลูกชิ้น'],
       ['expense-drink','รายจ่าย — วัตถุดิบน้ำ'],
       ['expense-other','รายจ่าย — ค่าใช้จ่ายอื่น'],
@@ -56,6 +57,7 @@ const TR = {
     recTypes:[
       ['income-skewer','Income — Skewer'],
       ['income-drink','Income — Drinks'],
+      ['income-other','Income — Other'],
       ['expense-skewer','Expense — Skewer materials'],
       ['expense-drink','Expense — Drink materials'],
       ['expense-other','Expense — Other costs'],
@@ -174,14 +176,23 @@ function calcStats(recs) {
   const sExpense = sum(r=>r.type==='expense-skewer');
   const dIncome  = sum(r=>r.type==='income-drink');
   const dExpense = sum(r=>r.type==='expense-drink');
-  return {income,expense,net:income-expense,sIncome,sExpense,sNet:sIncome-sExpense,dIncome,dExpense,dNet:dIncome-dExpense};
+  const oIncome  = sum(r=>r.type==='income-other');
+  const oExpense = sum(r=>r.type==='expense-other');
+  return {income,expense,net:income-expense,
+          sIncome,sExpense,sNet:sIncome-sExpense,
+          dIncome,dExpense,dNet:dIncome-dExpense,
+          oIncome,oExpense,oNet:oIncome-oExpense};
 }
 
 function filterRecords(period) {
   const now = new Date();
   if(period==='today') return records.filter(r=>r.date===todayStr());
   if(period==='week')  { const d=new Date(now); d.setDate(d.getDate()-6); return records.filter(r=>r.date>=d.toISOString().slice(0,10)); }
-  if(period==='month') { const s=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`; return records.filter(r=>r.date.startsWith(s)); }
+  if(period==='month') {
+    const mp = document.getElementById('report-month-picker');
+    const s = (mp && mp.value) ? mp.value : `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    return records.filter(r=>r.date.startsWith(s));
+  }
   if(period==='custom') {
     const f=document.getElementById('range-from').value;
     const t=document.getElementById('range-to').value;
@@ -223,20 +234,114 @@ function rowItemHTML(r, showDetail=true) {
   </div>`;
 }
 
+
+// ─── Day label helpers ───────────────────────────────────────
+const TH_DAYS = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+const EN_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function dayLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const name = settings.lang==='th' ? TH_DAYS[d.getDay()] : EN_DAYS[d.getDay()];
+  return name + '.' + dd + '-' + mm;
+}
+function monthDayLabel(dateStr) {
+  // สำหรับกราฟรายเดือน: dd-mm-yy
+  const d = new Date(dateStr + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yy = String(d.getFullYear()).slice(2);
+  return dd+'-'+mm+'-'+yy;
+}
+function getDatesInRange(startStr, endStr) {
+  const dates = [];
+  const [sy,sm,sd] = startStr.split('-').map(Number);
+  const [ey,em,ed] = endStr.split('-').map(Number);
+  const end = new Date(ey,em-1,ed);
+  const cur = new Date(sy,sm-1,sd);
+  while(cur <= end){
+    const ds=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    dates.push(ds);
+    cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+function getWeek7Days() {
+  // 7 วัน โดยวันปัจจุบันอยู่ตรงกลาง (index 3)
+  const today = new Date(); const days = [];
+  for(let i=-3; i<=3; i++){
+    const d = new Date(today); d.setDate(d.getDate()+i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  return days;
+}
+function getMonthDays(yearMonth) {
+  // yearMonth = 'YYYY-MM' — ใช้ UTC เพื่อหลีกเลี่ยง timezone drift
+  const [y,m] = yearMonth.split('-').map(Number);
+  const days = [];
+  let day = 1;
+  while(true){
+    const ds = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const d  = new Date(ds+'T00:00:00');
+    if(d.getMonth()!==m-1) break;
+    days.push(ds);
+    day++;
+  }
+  return days;
+}
+function setSummaryToday() {
+  document.getElementById('summary-date').value = todayStr();
+  renderSummary();
+}
+function rowItemWithIndex(r, idx) {
+  const info = getTypeInfo(r.type);
+  const qtyText = (r.unitPrice && r.qty && r.qty !== 1)
+    ? `${r.qty} × ฿${fmt(r.unitPrice)}` : '';
+  return `<div class="row-item">
+    <div style="font-size:13px;font-weight:700;color:var(--text3);min-width:22px;flex-shrink:0">${idx}</div>
+    <div class="ri-left">
+      <div class="ri-desc">${r.desc||'—'}</div>
+      <div class="ri-meta">
+        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
+      </div>
+    </div>
+    <div class="ri-right">
+      <span class="ri-amt ${info.amtCls}">${info.sign}฿${fmt(r.amount)}</span>
+    </div>
+  </div>`;
+}
+
 function renderSummary() {
-  const recs = filterRecords('today');
+  const isEn = settings.lang==='en';
+  const selDate = document.getElementById('summary-date').value || todayStr();
+  const recs = records.filter(r => r.date === selDate);
   const s = calcStats(recs);
+
+  // แสดงวันที่ใน metric
+  const d = new Date(selDate+'T00:00:00');
+  const dateDisplay = d.toLocaleDateString(isEn?'en-GB':'th-TH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   document.getElementById('summary-metrics').innerHTML =
     metricCardHTML(tx('totalIncome'),  s.income,  'mc-income') +
     metricCardHTML(tx('totalExpense'), s.expense, 'mc-expense') +
     metricCardHTML(tx('netProfit'),    s.net,      s.net>=0?'mc-pos':'mc-neg');
+
   document.getElementById('skewer-summary').innerHTML = catBlockHTML(s.sIncome, s.sExpense, s.sNet);
   document.getElementById('drink-summary').innerHTML  = catBlockHTML(s.dIncome, s.dExpense, s.dNet);
-  const recent = [...records].sort((a,b)=>b.id-a.id).slice(0,6);
-  document.getElementById('recent-list').innerHTML = recent.length
-    ? recent.map(rowItemHTML).join('')
+  document.getElementById('other-summary').innerHTML  = catBlockHTML(s.oIncome, s.oExpense, s.oNet);
+
+  // รายการล่าสุด 20 รายการ เรียงตามลำดับการบันทึกล่าสุดก่อน พร้อมเลขลำดับ
+  const recentRecs = [...records].sort((a,b)=>b.id-a.id).slice(0,20);
+  document.getElementById('recent-list').innerHTML = recentRecs.length
+    ? recentRecs.map((r,i)=>rowItemWithIndex(r,i+1)).join('')
     : `<div class="empty">${tx('empty')}</div>`;
-  setText('lbl-skewer', tx('skewer')); setText('lbl-drink', tx('drink')); setText('lbl-recent', tx('lRecent'));
+
+  setText('lbl-skewer', tx('skewer'));
+  setText('lbl-drink', tx('drink'));
+  setText('lbl-other-sum', isEn?'Other':'อื่นๆ');
+  setText('lbl-recent', tx('lRecent'));
+  setText('lbl-sum-date', isEn?'📅 Select date':'📅 เลือกวันที่');
+  setText('btn-sum-today', isEn?'Today':'วันนี้');
 }
 
 function renderRecordTab() {
@@ -341,47 +446,186 @@ function setPeriod(p) {
   reportPeriod=p;
   document.querySelectorAll('.period-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+p).classList.add('active');
-  document.getElementById('custom-range').style.display = p==='custom'?'block':'none';
+  document.getElementById('custom-range').style.display   = p==='custom'?'block':'none';
+  document.getElementById('week-picker-row').style.display = p==='week'?'block':'none';
+  document.getElementById('month-picker-row').style.display= p==='month'?'block':'none';
   if(p!=='custom') renderReport();
 }
+function setWeekToday(){
+  document.getElementById('report-week-center').value=todayStr();
+  renderReport();
+}
 function renderReport() {
+  const isEn = settings.lang==='en';
+  // month picker visibility
+  const monthRow = document.getElementById('month-picker-row');
+  if(monthRow) monthRow.style.display = reportPeriod==='month'?'block':'none';
+  // set default month picker to current month
+  // sync picker visibility
+  const wr=document.getElementById('week-picker-row');
+  const mr=document.getElementById('month-picker-row');
+  if(wr) wr.style.display = reportPeriod==='week'?'block':'none';
+  if(mr) mr.style.display = reportPeriod==='month'?'block':'none';
+  if(reportPeriod==='month'){
+    const mp = document.getElementById('report-month-picker');
+    if(mp && !mp.value) mp.value = todayStr().slice(0,7);
+  }
+  if(reportPeriod==='week'){
+    const wc = document.getElementById('report-week-center');
+    if(wc && !wc.value) wc.value = todayStr();
+  }
+
   const recs = filterRecords(reportPeriod);
   const s = calcStats(recs);
   document.getElementById('report-metrics').innerHTML =
     metricCardHTML(tx('totalIncome'),  s.income,  'mc-income') +
     metricCardHTML(tx('totalExpense'), s.expense, 'mc-expense') +
     metricCardHTML(tx('netProfit'),    s.net,      s.net>=0?'mc-pos':'mc-neg');
-  setText('lbl-chart',tx('lChart')); setText('leg-income',tx('legIncome')); setText('leg-expense',tx('legExpense'));
+  setText('lbl-chart',tx('lChart'));
   setText('btn-week',tx('weekly')); setText('btn-month',tx('monthly')); setText('btn-custom',tx('custom'));
   setText('lbl-from',tx('lFrom')); setText('lbl-to',tx('lTo')); setText('btn-apply',tx('btnApply'));
   setText('lbl-skewer-rpt',tx('skewer')); setText('lbl-drink-rpt',tx('drink'));
+  setText('lbl-other-rpt', isEn?'Other':'อื่นๆ');
+  setText('lbl-pick-month', isEn?'📅 Select month':'📅 เลือกเดือน');
+  setText('lbl-pick-week',  isEn?'📅 Center date':'📅 วันกลาง');
+  setText('btn-week-today', isEn?'Today':'วันนี้');
+  setText('lbl-ymax', isEn?'Max ฿':'สูงสุด ฿');
+  setText('leg-income',tx('legIncome')); setText('leg-expense',tx('legExpense'));
   document.getElementById('skewer-report').innerHTML = catBlockHTML(s.sIncome, s.sExpense, s.sNet);
   document.getElementById('drink-report').innerHTML  = catBlockHTML(s.dIncome, s.dExpense, s.dNet);
+  document.getElementById('other-report').innerHTML  = catBlockHTML(s.oIncome, s.oExpense, s.oNet);
   renderChart(recs);
 }
 function renderChart(recs) {
-  const days={};
+  const container = document.getElementById('chart-container');
+  const wrap      = document.getElementById('chart-scroll-wrap');
+
+  const dayMap = {};
   recs.forEach(r=>{
-    if(!days[r.date]) days[r.date]={inc:0,exp:0};
-    if(r.type.startsWith('income')) days[r.date].inc+=r.amount;
-    else days[r.date].exp+=r.amount;
+    if(!dayMap[r.date]) dayMap[r.date]={inc:0,exp:0};
+    if(r.type.startsWith('income')) dayMap[r.date].inc+=r.amount;
+    else dayMap[r.date].exp+=r.amount;
   });
-  const keys=Object.keys(days).sort().slice(-10);
-  const container=document.getElementById('chart-container');
-  if(!keys.length){container.innerHTML=`<div class="empty" style="width:100%">${tx('empty')}</div>`;return;}
-  const maxVal=Math.max(...keys.map(k=>Math.max(days[k].inc,days[k].exp)),1);
-  container.innerHTML=keys.map(k=>{
-    const incH=Math.round((days[k].inc/maxVal)*120);
-    const expH=Math.round((days[k].exp/maxVal)*120);
-    return `<div class="chart-group">
-      <div class="chart-bars">
-        <div class="chart-bar inc" style="height:${incH}px"></div>
-        <div class="chart-bar exp" style="height:${expH}px"></div>
+
+  let keys=[], isMonth=false, isScroll=false;
+  if(reportPeriod==='week'){
+    const centerVal = document.getElementById('report-week-center')?.value || todayStr();
+    // แยก y,m,d เพื่อหลีกเลี่ยง timezone drift
+    const [cy,cm,cd] = centerVal.split('-').map(Number);
+    keys=[];
+    for(let i=-3;i<=3;i++){
+      const d=new Date(cy,cm-1,cd+i);
+      const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      keys.push(ds);
+    }
+  } else if(reportPeriod==='month'){
+    const mp=document.getElementById('report-month-picker');
+    const ym=(mp&&mp.value)?mp.value:todayStr().slice(0,7);
+    keys=getMonthDays(ym); isMonth=true; isScroll=true;
+  } else {
+    // custom
+    const f=document.getElementById('range-from').value;
+    const t=document.getElementById('range-to').value;
+    if(f&&t){
+      const allDays=getDatesInRange(f,t);
+      if(allDays.length>40){
+        container.style.minWidth='';
+        container.style.height='auto';
+        container.innerHTML=`<div class="empty" style="width:100%;padding:2rem;color:var(--expense-c)">
+          ⚠️ ช่วงที่เลือกมีมากกว่า 40 วัน กรุณาเลือกช่วงที่สั้นกว่านี้เพื่อให้กราฟแสดงผลได้ชัดเจน (สูงสุด 40 วัน)
+        </div>`;
+        return;
+      }
+      keys=allDays; isScroll=keys.length>14;
+    } else {
+      keys=Object.keys(dayMap).sort(); isScroll=keys.length>14;
+    }
+  }
+
+  if(!keys.length){
+    container.style.minWidth=''; container.style.height='auto';
+    container.innerHTML=`<div class="empty" style="width:100%;padding:2rem">${tx('empty')}</div>`;
+    return;
+  }
+
+  // ── Y axis ──
+  const maxData=Math.max(...keys.map(k=>Math.max(dayMap[k]?.inc||0,dayMap[k]?.exp||0)),1);
+  const ymaxInput=document.getElementById('chart-ymax');
+  const yTop = (ymaxInput&&ymaxInput.value&&parseInt(ymaxInput.value)>0)
+    ? Math.ceil(parseInt(ymaxInput.value)/200)*200
+    : Math.ceil(Math.max(maxData,200)/200)*200;
+  const yStep = yTop<=1000?200:yTop<=4000?500:1000;
+  const barAreaH = 240;
+  const valLabelH = 18; // พื้นที่สำหรับตัวเลขเหนือแท่ง
+  const totalH = barAreaH + valLabelH;
+
+  const yLines=[];
+  for(let v=0;v<=yTop;v+=yStep) yLines.push(v);
+
+  // ── Sizing ──
+  const barW   = isMonth?16:24;
+  const gap    = isMonth?3:6;
+  const groupW = barW*2+gap;
+  const yAxisW = 38; // ข้อ 4: แคบลง ติดขอบซ้ายมากขึ้น
+
+  const wrapW  = wrap?.offsetWidth||300;
+  const minW   = Math.max(keys.length*(groupW+6)+yAxisW, wrapW);
+
+  // ── Y-axis HTML ──
+  const yAxisHTML = `<div style="position:absolute;left:0;top:${valLabelH}px;width:${yAxisW}px;height:${barAreaH}px">
+    ${yLines.map(v=>{
+      const bottom=Math.round((v/yTop)*barAreaH);
+      return `<div style="position:absolute;bottom:${bottom}px;left:0;width:${yAxisW-4}px;text-align:right">
+        <span style="font-size:9px;color:var(--text3);line-height:1">${v>=1000?(v/1000)+'k':v}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  // ── Grid lines ──
+  const gridHTML = `<div style="position:absolute;left:${yAxisW}px;right:0;top:${valLabelH}px;height:${barAreaH}px;pointer-events:none">
+    ${yLines.map((v,i)=>{
+      const bottom=Math.round((v/yTop)*barAreaH);
+      // เส้น 0 เข้มกว่า เส้นอื่นๆ ชัดขึ้น
+      const style = i===0
+        ? 'border-top:1.5px solid var(--border);opacity:0.9'
+        : 'border-top:1px solid var(--text3);opacity:0.35';
+      return `<div style="position:absolute;bottom:${bottom}px;left:0;right:0;${style}"></div>`;
+    }).join('')}
+  </div>`;
+
+  // ── Bars ──
+  const barsHTML = keys.map(k=>{
+    const inc=dayMap[k]?.inc||0;
+    const exp=dayMap[k]?.exp||0;
+    const incH=Math.max(inc>0?3:0,Math.round((Math.min(inc,yTop)/yTop)*barAreaH));
+    const expH=Math.max(exp>0?3:0,Math.round((Math.min(exp,yTop)/yTop)*barAreaH));
+    const label = (isMonth||(reportPeriod==='custom')) ? monthDayLabel(k) : dayLabel(k);
+    // ── ข้อ 1: ตัวเลขเหนือแท่ง อยู่ใน valLabelH zone ──
+    const incTxt = inc>0 ? `<span style="font-size:9px;font-weight:700;color:#2BB5AA;display:block;text-align:center;width:${barW}px;white-space:nowrap">${inc>=1000?(inc/1000).toFixed(1)+'k':inc}</span>` : `<span style="display:block;width:${barW}px"></span>`;
+    const expTxt = exp>0 ? `<span style="font-size:9px;font-weight:700;color:#E05555;display:block;text-align:center;width:${barW}px;white-space:nowrap">${exp>=1000?(exp/1000).toFixed(1)+'k':exp}</span>` : `<span style="display:block;width:${barW}px"></span>`;
+    return `<div class="chart-group" style="min-width:${groupW+6}px">
+      <div style="display:flex;gap:${gap}px;justify-content:center;height:${valLabelH}px;align-items:flex-end;margin-bottom:0">${incTxt}${expTxt}</div>
+      <div class="chart-bars" style="height:${barAreaH}px;align-items:flex-end;gap:${gap}px">
+        <div class="chart-bar inc" style="height:${incH}px;width:${barW}px"></div>
+        <div class="chart-bar exp" style="height:${expH}px;width:${barW}px"></div>
       </div>
-      <div class="chart-bar-label">${k.slice(5)}</div>
+      <div class="chart-bar-label" style="font-size:${isMonth?'8px':'9px'};margin-top:4px">${label}</div>
     </div>`;
   }).join('');
+
+  container.style.minWidth = minW+'px';
+  container.style.height   = (totalH+28)+'px'; // +28 สำหรับ label ด้านล่าง
+
+  container.innerHTML = `<div style="position:relative;width:100%;height:${totalH}px">
+    ${yAxisHTML}${gridHTML}
+    <div style="position:absolute;left:${yAxisW}px;right:0;top:0;bottom:0;display:flex;align-items:flex-end;overflow:visible">
+      ${barsHTML}
+    </div>
+  </div>`;
+
+  if(isMonth&&wrap){ setTimeout(()=>{ wrap.scrollLeft=wrap.scrollWidth; },100); }
 }
+
 
 function openSettings() {
   selectedBackupMonths = settings.backupMonths;
@@ -471,6 +715,10 @@ function renderAll() {
 (async function init() {
   loadLocal();
   document.getElementById('rec-date').value = todayStr();
+  const sd = document.getElementById('summary-date');
+  if(sd && !sd.value) sd.value = todayStr();
+  const wc = document.getElementById('report-week-center');
+  if(wc && !wc.value) wc.value = todayStr();
   const now = new Date();
   document.getElementById('header-date').textContent =
     now.toLocaleDateString('th-TH',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
