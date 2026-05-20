@@ -212,10 +212,16 @@
 
     <!-- REPORT TAB -->
     <section id="sec-report" class="tab-section">
-      <div class="period-toggle" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div class="period-toggle" style="margin-bottom:0">
         <button class="period-btn active" onclick="setPeriod('week')" id="btn-week">รายสัปดาห์</button>
         <button class="period-btn" onclick="setPeriod('month')" id="btn-month">รายเดือน</button>
         <button class="period-btn" onclick="setPeriod('custom')" id="btn-custom">กำหนดเอง</button>
+        </div>
+        <button class="btn btn-sm" onclick="openStatementModal()" id="btn-export-pdf"
+          style="background:linear-gradient(135deg,#FF6B6B,#FF8E53);color:#fff;border:none;white-space:nowrap">
+          📄 Export PDF
+        </button>
       </div>
       <div id="custom-range" style="display:none" class="card" style="padding:0.75rem">
         <div class="form-row">
@@ -295,6 +301,14 @@
       <label id="lbl-shop-name-setting">ชื่อร้าน</label>
       <input type="text" id="setting-shop-name" placeholder="ร้านลูกชิ้นปิ้ง & น้ำ">
     </div>
+    <div class="form-group">
+      <label id="lbl-owner-name">ชื่อ-นามสกุลเจ้าของ</label>
+      <input type="text" id="setting-owner-name" placeholder="ชื่อ นามสกุล">
+    </div>
+    <div class="form-group">
+      <label id="lbl-id-card">เลขบัตรประชาชน</label>
+      <input type="text" id="setting-id-card" placeholder="x-xxxx-xxxxx-xx-x" maxlength="17">
+    </div>
 
     <div class="form-group">
       <label id="lbl-backup-months">เก็บข้อมูลย้อนหลัง (เดือน)</label>
@@ -331,6 +345,45 @@
     </div>
   </div>
 </div>
+
+<!-- Statement Modal -->
+<div id="statement-modal" class="modal-overlay" style="display:none" onclick="closeStatementOutside(event)">
+  <div class="modal-box">
+    <div class="modal-title" id="lbl-stmt-title">📄 Export Statement PDF</div>
+    <div class="form-group">
+      <label id="lbl-stmt-range">ช่วงเวลา</label>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="bk-pill active" onclick="setStmtMode('range')" id="stmt-mode-range">กำหนดเอง</button>
+        <button class="bk-pill" onclick="setStmtMode('month')" id="stmt-mode-month">รายเดือน</button>
+      </div>
+      <div id="stmt-range-row">
+        <div class="form-row">
+          <div class="form-group">
+            <label id="lbl-stmt-from">จาก</label>
+            <input type="date" id="stmt-from">
+          </div>
+          <div class="form-group">
+            <label id="lbl-stmt-to">ถึง</label>
+            <input type="date" id="stmt-to">
+          </div>
+        </div>
+      </div>
+      <div id="stmt-month-row" style="display:none">
+        <div class="form-group">
+          <label id="lbl-stmt-month">เดือน</label>
+          <input type="month" id="stmt-month">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-outline" onclick="closeStatementModal()" id="stmt-cancel">ยกเลิก</button>
+      <button class="btn btn-primary" style="width:auto" onclick="generatePDF()" id="stmt-generate">📄 สร้าง PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Statement Content (hidden, used for print) -->
+<div id="statement-print-area" style="display:none"></div>
 
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>

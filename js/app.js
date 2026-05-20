@@ -4,7 +4,7 @@
 
 let records = [];
 let stocks  = [];
-let settings = { shopName: 'ร้านลูกชิ้นปิ้ง & น้ำ', backupMonths: 3, firebaseConfig: '', lang: 'th' };
+let settings = { shopName: 'ร้านลูกชิ้นปิ้ง & น้ำ', backupMonths: 3, firebaseConfig: '', lang: 'th', ownerName: '', idCard: '' };
 let db = null;
 let reportPeriod = 'week';
 let nextId = 1;
@@ -490,6 +490,9 @@ function renderReport() {
   setText('lbl-pick-week',  isEn?'📅 Center date':'📅 วันกลาง');
   setText('btn-week-today', isEn?'Today':'วันนี้');
   setText('lbl-ymax', isEn?'Max ฿':'สูงสุด ฿');
+  setText('btn-export-pdf', isEn?'📄 Export PDF':'📄 Export PDF');
+  setText('lbl-owner-name', isEn?'Owner name':'ชื่อ-นามสกุลเจ้าของ');
+  setText('lbl-id-card', isEn?'ID card number':'เลขบัตรประชาชน');
   setText('leg-income',tx('legIncome')); setText('leg-expense',tx('legExpense'));
   document.getElementById('skewer-report').innerHTML = catBlockHTML(s.sIncome, s.sExpense, s.sNet);
   document.getElementById('drink-report').innerHTML  = catBlockHTML(s.dIncome, s.dExpense, s.dNet);
@@ -648,6 +651,8 @@ function updateBkPills() { [1,3,6,12,0].forEach(m=>{const e=document.getElementB
 function updateBkHint()  { const e=document.getElementById('lbl-backup-hint');if(e)e.textContent=txf('backupHint',selectedBackupMonths); }
 function saveSettings() {
   settings.shopName       = document.getElementById('setting-shop-name').value.trim()||settings.shopName;
+  settings.ownerName      = document.getElementById('setting-owner-name').value.trim();
+  settings.idCard         = document.getElementById('setting-id-card').value.trim();
   settings.backupMonths   = selectedBackupMonths;
   settings.firebaseConfig = document.getElementById('setting-firebase').value.trim();
   saveLocal(); initFirebase(settings.firebaseConfig); closeSettings(); renderAll(); showToast(tx('saved'));
@@ -1218,4 +1223,216 @@ function migrateMenuFromRecords() {
   } else {
     showToast(isEn ? 'No new items to add' : 'ไม่มีรายการใหม่ที่ต้องเพิ่ม');
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// STATEMENT PDF
+// ══════════════════════════════════════════════════════════════
+let stmtMode = 'range';
+
+function openStatementModal() {
+  stmtMode = 'range';
+  updateStmtMode();
+  // ค่า default
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('stmt-month').value = `${y}-${m}`;
+  // default range = เดือนนี้
+  document.getElementById('stmt-from').value = `${y}-${m}-01`;
+  document.getElementById('stmt-to').value   = todayStr();
+
+  const isEn = settings.lang==='en';
+  setText('lbl-stmt-title',  isEn?'📄 Export Statement PDF':'📄 Export Statement PDF');
+  setText('lbl-stmt-range',  isEn?'Period':'ช่วงเวลา');
+  setText('stmt-mode-range', isEn?'Custom range':'กำหนดเอง');
+  setText('stmt-mode-month', isEn?'By month':'รายเดือน');
+  setText('lbl-stmt-from',   isEn?'From':'จาก');
+  setText('lbl-stmt-to',     isEn?'To':'ถึง');
+  setText('lbl-stmt-month',  isEn?'Month':'เดือน');
+  setText('stmt-cancel',     isEn?'Cancel':'ยกเลิก');
+  setText('stmt-generate',   isEn?'📄 Generate PDF':'📄 สร้าง PDF');
+
+  document.getElementById('statement-modal').style.display='flex';
+}
+function closeStatementModal() {
+  document.getElementById('statement-modal').style.display='none';
+}
+function closeStatementOutside(e) {
+  if(e.target.id==='statement-modal') closeStatementModal();
+}
+function setStmtMode(mode) {
+  stmtMode = mode;
+  updateStmtMode();
+}
+function updateStmtMode() {
+  document.getElementById('stmt-range-row').style.display = stmtMode==='range'?'block':'none';
+  document.getElementById('stmt-month-row').style.display = stmtMode==='month'?'block':'none';
+  document.getElementById('stmt-mode-range').classList.toggle('active', stmtMode==='range');
+  document.getElementById('stmt-mode-month').classList.toggle('active', stmtMode==='month');
+}
+
+function generatePDF() {
+  const isEn = settings.lang==='en';
+
+  // ── กำหนดช่วงวันที่ ──
+  let fromStr, toStr, periodLabel;
+  if(stmtMode==='month') {
+    const ym = document.getElementById('stmt-month').value;
+    if(!ym) { showToast(isEn?'Please select month':'กรุณาเลือกเดือน'); return; }
+    const days = getMonthDays(ym);
+    fromStr = days[0]; toStr = days[days.length-1];
+    const d = new Date(ym+'-01T00:00:00');
+    periodLabel = d.toLocaleDateString(isEn?'en-GB':'th-TH',{year:'numeric',month:'long'});
+  } else {
+    fromStr = document.getElementById('stmt-from').value;
+    toStr   = document.getElementById('stmt-to').value;
+    if(!fromStr||!toStr) { showToast(isEn?'Please select date range':'กรุณาเลือกวันที่'); return; }
+    periodLabel = `${fromStr} – ${toStr}`;
+  }
+
+  // ── กรอง records ──
+  const recs = [...records]
+    .filter(r => r.date>=fromStr && r.date<=toStr)
+    .sort((a,b) => a.date.localeCompare(b.date)||a.id-b.id);
+
+  const s = calcStats(recs);
+
+  // ── ฟอร์แมตตัวเลข ──
+  const b = n => `฿${Math.round(n).toLocaleString('th-TH')}`;
+
+  // ── type label ──
+  const typeMap = {
+    'income-skewer':  isEn?'Income — Skewer':'รายรับ — ลูกชิ้น',
+    'income-drink':   isEn?'Income — Drinks':'รายรับ — น้ำ',
+    'income-other':   isEn?'Income — Other':'รายรับ — อื่นๆ',
+    'expense-skewer': isEn?'Expense — Skewer':'รายจ่าย — ลูกชิ้น',
+    'expense-drink':  isEn?'Expense — Drinks':'รายจ่าย — น้ำ',
+    'expense-other':  isEn?'Expense — Other':'รายจ่าย — อื่นๆ',
+  };
+
+  // ── สร้าง HTML statement ──
+  const rows = recs.map((r,i) => {
+    const isInc = r.type.startsWith('income');
+    return `<tr>
+      <td style="text-align:center">${i+1}</td>
+      <td>${r.date}</td>
+      <td>${r.desc||'—'}</td>
+      <td>${typeMap[r.type]||r.type}</td>
+      <td style="text-align:right;color:#0A7A50">${isInc?b(r.amount):''}</td>
+      <td style="text-align:right;color:#C0392B">${!isInc?b(r.amount):''}</td>
+    </tr>`;
+  }).join('');
+
+  const idDisplay = settings.idCard
+    ? settings.idCard.replace(/(\d)(\d{4})(\d{5})(\d{2})(\d)/,'$1-$2-$3-$4-$5')
+    : '—';
+
+  const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Statement — ${settings.shopName}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600&display=swap');
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Sarabun',sans-serif; font-size:13px; color:#1A1A1A; padding:32px; }
+  h1 { font-size:20px; font-weight:600; margin-bottom:4px; }
+  .header { border-bottom:2px solid #FF6B6B; padding-bottom:12px; margin-bottom:18px; }
+  .header-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:8px; font-size:12px; color:#555; }
+  .period-badge { display:inline-block; background:#FFF0EB; color:#C44A18; border:1px solid #FFD6CC; border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; margin-top:6px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+  th { background:#FF6B6B; color:white; padding:7px 8px; text-align:left; font-size:12px; font-weight:600; }
+  td { padding:6px 8px; border-bottom:1px solid #EEE; font-size:12px; vertical-align:top; }
+  tr:nth-child(even) td { background:#FAFAFA; }
+  .summary { background:#FFF8F5; border:1px solid #FFD6CC; border-radius:8px; padding:14px 18px; margin-bottom:20px; }
+  .summary h3 { font-size:14px; font-weight:600; margin-bottom:10px; color:#C44A18; }
+  .sum-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .sum-item { text-align:center; }
+  .sum-label { font-size:11px; color:#777; margin-bottom:3px; }
+  .sum-value { font-size:16px; font-weight:600; }
+  .sum-income { color:#0A7A50; }
+  .sum-expense { color:#C0392B; }
+  .sum-profit.pos { color:#0A7A50; }
+  .sum-profit.neg { color:#C0392B; }
+  .monthly-table { margin-bottom:20px; }
+  .monthly-table h3 { font-size:13px; font-weight:600; margin-bottom:8px; color:#333; }
+  .sign { font-size:11px; color:#888; margin-top:20px; }
+  @media print {
+    body { padding:16px; }
+    button { display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>รายงานเงินสดรับ-จ่าย</h1>
+  <div class="period-badge">📅 ${periodLabel}</div>
+  <div class="header-grid">
+    <div>ชื่อสถานประกอบการ: <strong>${settings.shopName||'—'}</strong></div>
+    <div>ชื่อ-นามสกุลเจ้าของ: <strong>${settings.ownerName||'—'}</strong></div>
+    <div>เลขประจำตัวประชาชน: <strong>${idDisplay}</strong></div>
+    <div>วันที่จัดทำ: <strong>${new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}</strong></div>
+  </div>
+</div>
+
+<div class="summary">
+  <h3>สรุปผลการดำเนินงาน</h3>
+  <div class="sum-grid">
+    <div class="sum-item">
+      <div class="sum-label">รายรับรวม</div>
+      <div class="sum-value sum-income">${b(s.income)}</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">รายจ่ายรวม</div>
+      <div class="sum-value sum-expense">${b(s.expense)}</div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">กำไรสุทธิ</div>
+      <div class="sum-value sum-profit ${s.net>=0?'pos':'neg'}">${b(s.net)}</div>
+    </div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:40px;text-align:center">ลำดับ</th>
+      <th style="width:90px">วันที่</th>
+      <th>รายการ</th>
+      <th style="width:150px">ประเภท</th>
+      <th style="width:90px;text-align:right">รายรับ</th>
+      <th style="width:90px;text-align:right">รายจ่าย</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">ไม่มีรายการในช่วงเวลาที่เลือก</td></tr>`}
+    <tr style="font-weight:600;background:#FFF0EB">
+      <td colspan="4" style="text-align:right">รวมทั้งสิ้น</td>
+      <td style="text-align:right;color:#0A7A50">${b(s.income)}</td>
+      <td style="text-align:right;color:#C0392B">${b(s.expense)}</td>
+    </tr>
+    <tr style="font-weight:700;background:#FFE5DC">
+      <td colspan="4" style="text-align:right">กำไร (ขาดทุน) สุทธิ</td>
+      <td colspan="2" style="text-align:right;color:${s.net>=0?'#0A7A50':'#C0392B'};font-size:14px">${b(s.net)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="sign">
+  <p>ลงชื่อ ..................................................... ผู้จัดทำ</p>
+  <p style="margin-top:4px">(${settings.ownerName||'......................................'})</p>
+  <p style="margin-top:8px;color:#AAA;font-size:11px">จัดทำโดยระบบบันทึกรายรับรายจ่าย — ${settings.shopName}</p>
+</div>
+</body>
+</html>`;
+
+  // เปิด window ใหม่แล้วสั่ง print
+  const win = window.open('','_blank','width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => {
+    setTimeout(()=>{ win.print(); }, 500);
+  };
+  closeStatementModal();
 }
