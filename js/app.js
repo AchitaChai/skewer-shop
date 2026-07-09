@@ -331,7 +331,7 @@ function renderSummary() {
   document.getElementById('other-summary').innerHTML  = catBlockHTML(s.oIncome, s.oExpense, s.oNet);
 
   // รายการล่าสุด 20 รายการ เรียงตามลำดับการบันทึกล่าสุดก่อน พร้อมเลขลำดับ
-  const recentRecs = [...records].sort((a,b)=>b.id-a.id).slice(0,20);
+  const recentRecs = [...records].sort((a,b)=>b.id-a.id).slice(0,50);
   document.getElementById('recent-list').innerHTML = recentRecs.length
     ? recentRecs.map((r,i)=>rowItemWithIndex(r,i+1)).join('')
     : `<div class="empty">${tx('empty')}</div>`;
@@ -356,11 +356,28 @@ function renderRecordTab() {
   renderRecordList();
 }
 function renderRecordList() {
-  const tf = document.getElementById('filter-type').value;
-  const mf = document.getElementById('filter-month').value;
+  const tf   = document.getElementById('filter-type').value;
+  const mode = document.getElementById('filter-date-mode')?.value || 'month';
   let list = [...records].sort((a,b)=>b.id-a.id);
-  if(tf) list=list.filter(r=>r.type===tf);
-  if(mf) list=list.filter(r=>r.date.startsWith(mf));
+
+  // กรองประเภท
+  if(tf) list = list.filter(r=>r.type===tf);
+
+  // กรองวันที่ตาม mode
+  if(mode==='month') {
+    const mf = document.getElementById('filter-month')?.value;
+    if(mf) list = list.filter(r=>r.date.startsWith(mf));
+  } else if(mode==='day') {
+    const df = document.getElementById('filter-day')?.value;
+    if(df) list = list.filter(r=>r.date===df);
+  } else if(mode==='range') {
+    const rf = document.getElementById('filter-range-from')?.value;
+    const rt = document.getElementById('filter-range-to')?.value;
+    if(rf) list = list.filter(r=>r.date>=rf);
+    if(rt) list = list.filter(r=>r.date<=rt);
+  }
+  // mode==='all' ไม่กรอง
+
   document.getElementById('all-records-list').innerHTML = list.length
     ? list.map(rowItemHTML).join('')
     : `<div class="empty">${tx('empty')}</div>`;
@@ -845,24 +862,40 @@ function renderMenuList() {
     </div>`;
   }
 
-  const incList = menuItems.filter(m => m.side !== 'expense');
-  const expList = menuItems.filter(m => m.side === 'expense');
+  // ── render tab filter ──
+  renderMenuTabFilter();
 
-  container.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px">
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--income-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--income-bg)">
-          💰 ${isEn?'Income (Menu)':'รายรับ (เมนู)'}
+  // กรองตาม tab
+  const filtered = menuTabFilter==='all'
+    ? menuItems
+    : menuItems.filter(m=>m.cat===menuTabFilter);
+
+  const incList = filtered.filter(m => m.side !== 'expense');
+  const expList = filtered.filter(m => m.side === 'expense');
+
+  // ถ้าเลือก tab เฉพาะที่ไม่ใช่ all ให้แสดงเป็น list เดียว
+  if(menuTabFilter !== 'all') {
+    const list = filtered;
+    container.innerHTML = list.length
+      ? list.map(menuRow).join('')
+      : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`;
+  } else {
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--income-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--income-bg)">
+            💰 ${isEn?'Income (Menu)':'รายรับ (เมนู)'}
+          </div>
+          ${incList.length ? incList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
         </div>
-        ${incList.length ? incList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
-      </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--expense-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--expense-bg)">
-          🛒 ${isEn?'Expense (Ingredients/Other)':'รายจ่าย (วัตถุดิบ/อื่นๆ)'}
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--expense-c);margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid var(--expense-bg)">
+            🛒 ${isEn?'Expense (Ingredients/Other)':'รายจ่าย (วัตถุดิบ/อื่นๆ)'}
+          </div>
+          ${expList.length ? expList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
         </div>
-        ${expList.length ? expList.map(menuRow).join('') : `<div class="empty" style="padding:10px 0;font-size:12px">${isEn?'None':'ยังไม่มี'}</div>`}
-      </div>
-    </div>`;
+      </div>`;
+  }
 }
 
 // ─── Autocomplete Dropdown ────────────────────────────────────
@@ -1435,4 +1468,49 @@ function generatePDF() {
     setTimeout(()=>{ win.print(); }, 500);
   };
   closeStatementModal();
+}
+
+// ══════════════════════════════════════════════════════════════
+// ข้อ 1: Menu Section — ซ่อน/แสดง + Tab filter
+// ══════════════════════════════════════════════════════════════
+let menuSectionVisible = true;
+let menuTabFilter = 'all'; // 'all' | recType value
+
+function toggleMenuSection() {
+  menuSectionVisible = !menuSectionVisible;
+  const body = document.getElementById('menu-section-body');
+  const btn  = document.getElementById('btn-toggle-menu-section');
+  const isEn = settings.lang==='en';
+  if(body) body.style.display = menuSectionVisible ? 'block' : 'none';
+  if(btn)  btn.textContent = menuSectionVisible
+    ? (isEn?'🔽 Hide':'🔽 ซ่อน')
+    : (isEn?'🔼 Show':'🔼 แสดง');
+}
+
+function renderMenuTabFilter() {
+  const el = document.getElementById('menu-tab-filter');
+  if(!el) return;
+  const isEn = settings.lang==='en';
+  // tabs: ทั้งหมด + แต่ละ recType ที่มีเมนูอยู่
+  const typesInUse = [...new Set(menuItems.map(m=>m.cat))];
+  const allTabs = [['all', isEn?'All':'ทั้งหมด'], ...tx('recTypes').filter(([v])=>typesInUse.includes(v))];
+  el.innerHTML = allTabs.map(([v,l])=>`
+    <button class="bk-pill ${menuTabFilter===v?'active':''}"
+      onclick="setMenuTab('${v}')"
+      style="font-size:11px;padding:4px 10px">${l}</button>
+  `).join('');
+}
+
+function setMenuTab(val) {
+  menuTabFilter = val;
+  renderMenuList();
+}
+
+// ── ข้อ 2: Record filter date mode ──
+function onFilterDateModeChange() {
+  const mode = document.getElementById('filter-date-mode').value;
+  document.getElementById('filter-month-row').style.display = mode==='month' ? 'block' : 'none';
+  document.getElementById('filter-day-row').style.display   = mode==='day'   ? 'block' : 'none';
+  document.getElementById('filter-range-row').style.display = mode==='range' ? 'block' : 'none';
+  renderRecordList();
 }

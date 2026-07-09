@@ -344,3 +344,8 @@ textarea { resize: vertical; }
   margin-bottom: 2px;
   white-space: nowrap;
 }
+
+/* ── MENU TAB FILTER ── */
+#menu-tab-filter { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+#menu-tab-filter::-webkit-scrollbar { height: 3px; }
+#menu-tab-filter::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

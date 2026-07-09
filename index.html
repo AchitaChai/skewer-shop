@@ -130,8 +130,14 @@
       <div class="card">
         <div class="card-title-row">
           <span id="lbl-menu-list">📋 รายการเมนู / วัตถุดิบ</span>
-          <button class="btn btn-sm btn-outline" onclick="toggleMenuForm()" id="btn-toggle-menu">+ เพิ่ม</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="toggleMenuSection()" id="btn-toggle-menu-section">🔽 ซ่อน</button>
+            <button class="btn btn-sm btn-outline" onclick="toggleMenuForm()" id="btn-toggle-menu">+ เพิ่ม</button>
+          </div>
         </div>
+        <div id="menu-section-body">
+        <!-- menu tab filter -->
+        <div id="menu-tab-filter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
         <div id="menu-form" style="display:none;margin-bottom:12px">
           <div class="form-row">
             <div class="form-group" style="margin-bottom:0">
@@ -157,16 +163,34 @@
           <button class="btn btn-primary" onclick="addMenuItem()" id="btn-save-menu" style="margin-top:10px">+ บันทึกเมนู</button>
         </div>
         <div id="menu-items-list"></div>
+        </div><!-- /menu-section-body -->
       </div>
 
       <div class="card">
         <div class="card-title-row">
           <span id="lbl-all-records">รายการทั้งหมด</span>
-          <div style="display:flex;gap:6px">
-            <select id="filter-type" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px">
-              <option value="">ทั้งหมด</option>
-            </select>
-            <input type="month" id="filter-month" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px">
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+          <select id="filter-type" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px;flex:1;min-width:120px">
+            <option value="">ทั้งหมด</option>
+          </select>
+          <select id="filter-date-mode" onchange="onFilterDateModeChange()" style="font-size:12px;padding:4px 8px">
+            <option value="month">รายเดือน</option>
+            <option value="day">วันที่</option>
+            <option value="range">ช่วงวันที่</option>
+            <option value="all">ทั้งหมด</option>
+          </select>
+        </div>
+        <div id="filter-month-row">
+          <input type="month" id="filter-month" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px;width:100%;margin-bottom:8px">
+        </div>
+        <div id="filter-day-row" style="display:none">
+          <input type="date" id="filter-day" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px;width:100%;margin-bottom:8px">
+        </div>
+        <div id="filter-range-row" style="display:none">
+          <div class="form-row" style="margin-bottom:8px">
+            <input type="date" id="filter-range-from" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px">
+            <input type="date" id="filter-range-to" onchange="renderRecordList()" style="font-size:12px;padding:4px 8px">
           </div>
         </div>
         <div id="all-records-list"></div>
