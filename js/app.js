@@ -1064,13 +1064,54 @@ renderRecordTab = function() {
 function editMenuItem(id) {
   const m = menuItems.find(x => x.id === id);
   if (!m) return;
-  const newName  = prompt(settings.lang==='th' ? `ชื่อใหม่ (เดิม: ${m.name})` : `New name (current: ${m.name})`, m.name);
-  if (newName === null) return;
-  const newPrice = prompt(settings.lang==='th' ? `ราคาต่อหน่วยใหม่ (เดิม: ${m.price})` : `New unit price (current: ${m.price})`, m.price);
-  if (newPrice === null) return;
-  m.name  = newName.trim() || m.name;
-  m.price = parseFloat(newPrice) || m.price;
+  const isEn = settings.lang==='en';
+
+  // สร้าง modal แก้ไขเมนู
+  let modal = document.getElementById('edit-menu-modal');
+  if(!modal) {
+    modal = document.createElement('div');
+    modal.id = 'edit-menu-modal';
+    modal.className = 'modal-overlay';
+    modal.onclick = e => { if(e.target===modal) modal.style.display='none'; };
+    document.body.appendChild(modal);
+  }
+
+  const typeOpts = tx('recTypes').map(([v,l])=>`<option value="${v}" ${v===m.cat?'selected':''}>${l}</option>`).join('');
+
+  modal.innerHTML = `<div class="modal-box">
+    <div class="modal-title">✏️ ${isEn?'Edit menu item':'แก้ไขรายการเมนู'}</div>
+    <div class="form-group">
+      <label>${isEn?'Item name':'ชื่อรายการ'}</label>
+      <input type="text" id="em-name" value="${m.name}">
+    </div>
+    <div class="form-group">
+      <label>${isEn?'Price / unit (THB)':'ราคา / หน่วย (บาท)'}</label>
+      <input type="number" id="em-price" value="${m.price}" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label>${isEn?'Type':'ประเภท'}</label>
+      <select id="em-cat">${typeOpts}</select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-outline" onclick="document.getElementById('edit-menu-modal').style.display='none'">${isEn?'Cancel':'ยกเลิก'}</button>
+      <button class="btn btn-primary" style="width:auto" onclick="saveEditMenuItem(${id})">${isEn?'💾 Save':'💾 บันทึก'}</button>
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
+
+function saveEditMenuItem(id) {
+  const m = menuItems.find(x => x.id === id);
+  if(!m) return;
+  const newCat = document.getElementById('em-cat').value;
+  m.name  = document.getElementById('em-name').value.trim() || m.name;
+  m.price = parseFloat(document.getElementById('em-price').value) || m.price;
+  m.cat   = newCat;
+  m.side  = newCat.startsWith('income') ? 'income' : 'expense';
   saveMenuItems(); pushToFirebase();
+  document.getElementById('edit-menu-modal').style.display='none';
+  // reset tab filter ถ้า cat เปลี่ยน
+  if(menuTabFilter !== 'all' && menuTabFilter !== newCat) menuTabFilter = 'all';
   renderMenuList();
   showToast(tx('saved'));
 }
