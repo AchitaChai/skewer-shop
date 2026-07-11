@@ -407,7 +407,13 @@ function addRecord() {
   showToast(tx('saved')); renderAll();
 }
 function deleteRecord(id) {
-  records=records.filter(r=>r.id!==id); saveLocal(); pushToFirebase();
+  const r = records.find(x=>x.id===id);
+  const name = r ? (r.desc||tx('expense')) : '';
+  const msg = settings.lang==='th'
+    ? `ลบรายการ "${name}" ใช่ไหม?`
+    : `Delete "${name}"?`;
+  if(!confirm(msg)) return;
+  records=records.filter(x=>x.id!==id); saveLocal(); pushToFirebase();
   showToast(tx('deleted')); renderAll();
 }
 
@@ -530,10 +536,10 @@ function renderChart(recs) {
   let keys=[], isMonth=false, isScroll=false;
   if(reportPeriod==='week'){
     const centerVal = document.getElementById('report-week-center')?.value || todayStr();
-    // แยก y,m,d เพื่อหลีกเลี่ยง timezone drift
+    // วันที่เลือกอยู่ขวาสุด แสดง 7 วันย้อนหลัง
     const [cy,cm,cd] = centerVal.split('-').map(Number);
     keys=[];
-    for(let i=-3;i<=3;i++){
+    for(let i=-6;i<=0;i++){
       const d=new Date(cy,cm-1,cd+i);
       const ds=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       keys.push(ds);
@@ -643,7 +649,21 @@ function renderChart(recs) {
     </div>
   </div>`;
 
-  if(isMonth&&wrap){ setTimeout(()=>{ wrap.scrollLeft=wrap.scrollWidth; },100); }
+  if(isMonth&&wrap){
+    setTimeout(()=>{
+      // หาตำแหน่งวันที่ปัจจุบันในกราฟ แล้ว scroll ไปที่นั่น
+      const todayKey = todayStr();
+      const todayIdx = keys.indexOf(todayKey);
+      const groupW = (barW*2+gap+6);
+      if(todayIdx>=0){
+        const scrollTo = Math.max(0, todayIdx*groupW - (wrap.offsetWidth/2));
+        wrap.scrollLeft = scrollTo;
+      } else {
+        // ถ้าวันนี้ไม่อยู่ในเดือนที่เลือก scroll ไปท้ายสุด
+        wrap.scrollLeft = wrap.scrollWidth;
+      }
+    },150);
+  }
 }
 
 
@@ -824,6 +844,11 @@ function addMenuItem(nameOverride, priceOverride, catOverride) {
 }
 
 function deleteMenuItem(id) {
+  const m = menuItems.find(x=>x.id===id);
+  const msg = settings.lang==='th'
+    ? `ต้องการลบ "${m?.name||'รายการนี้'}" ออกจากลิสต์ใช่ไหม?`
+    : `Delete "${m?.name||'this item'}" from the list?`;
+  if(!confirm(msg)) return;
   menuItems = menuItems.filter(x => x.id !== id);
   saveMenuItems(); pushToFirebase();
   renderMenuList();
