@@ -91,7 +91,13 @@ const TR = {
 
 function tx(k)  { return TR[settings.lang][k] || k; }
 function txf(k, ...a) { const fn = TR[settings.lang][k]; return typeof fn==='function'?fn(...a):fn; }
-function todayStr() { return new Date().toISOString().slice(0,10); }
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 function fmt(n) { return Math.round(Number(n)).toLocaleString('th-TH'); }
 function setText(id,v) { const e=document.getElementById(id); if(e) e.textContent=v; }
 function setPlaceholder(id,v) { const e=document.getElementById(id); if(e) e.placeholder=v; }
@@ -107,6 +113,7 @@ function getTypeInfo(type) {
   const map = {
     'income-skewer':  {label:tx('income')+' — '+tx('skewer'),  cls:'badge-in',  amtCls:'ri-pos', sign:'+'},
     'income-drink':   {label:tx('income')+' — '+tx('drink'),   cls:'badge-in',  amtCls:'ri-pos', sign:'+'},
+    'income-other':   {label:tx('income')+' — '+tx('other'),   cls:'badge-in',  amtCls:'ri-pos', sign:'+'},
     'expense-skewer': {label:tx('expense')+' — '+tx('skewer'), cls:'badge-out', amtCls:'ri-neg', sign:'-'},
     'expense-drink':  {label:tx('expense')+' — '+tx('drink'),  cls:'badge-out', amtCls:'ri-neg', sign:'-'},
     'expense-other':  {label:tx('expense')+' — '+tx('other'),  cls:'badge-out', amtCls:'ri-neg', sign:'-'},
@@ -223,7 +230,7 @@ function rowItemHTML(r, showDetail=true) {
     <div class="ri-left">
       <div class="ri-desc">${r.desc||'—'}</div>
       <div class="ri-meta">
-        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${r.date}${r.time?' · '+r.time:''} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
         ${showDetail && qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
       </div>
     </div>
@@ -302,7 +309,7 @@ function rowItemWithIndex(r, idx) {
     <div class="ri-left">
       <div class="ri-desc">${r.desc||'—'}</div>
       <div class="ri-meta">
-        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${r.date}${r.time?' · '+r.time:''} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
         ${qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
       </div>
     </div>
@@ -388,6 +395,8 @@ function addRecord() {
   const amount    = parseFloat(document.getElementById('rec-amount').value) || 0;
   if(!amount){showToast(tx('errAmount'));return;}
   const lastType = document.getElementById('rec-type').value; // ── ข้อ 3: จำประเภท
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
   records.push({
     id: nextId++,
     type: lastType,
@@ -395,7 +404,8 @@ function addRecord() {
     unitPrice: unitPrice || amount,
     qty,
     desc: document.getElementById('rec-desc').value.trim(),
-    date: document.getElementById('rec-date').value||todayStr()
+    date: document.getElementById('rec-date').value||todayStr(),
+    time: timeStr
   });
   saveLocal(); pushToFirebase();
   document.getElementById('rec-amount').value='';
@@ -754,6 +764,14 @@ function renderAll() {
   if(active==='report')  renderReport();
 }
 
+// ── Auto-refresh เมื่อกลับมา foreground ──
+document.addEventListener('visibilitychange', async function() {
+  if (document.visibilityState === 'visible' && db) {
+    await syncFromFirebase();
+    renderAll();
+  }
+});
+
 (async function init() {
   loadLocal();
   document.getElementById('rec-date').value = todayStr();
@@ -890,10 +908,13 @@ function renderMenuList() {
   // ── render tab filter ──
   renderMenuTabFilter();
 
+  // เรียงตัวอักษรก่อนแสดง
+  const sorted = [...menuItems].sort((a,b)=>a.name.localeCompare(b.name,'th'));
+
   // กรองตาม tab
   const filtered = menuTabFilter==='all'
-    ? menuItems
-    : menuItems.filter(m=>m.cat===menuTabFilter);
+    ? sorted
+    : sorted.filter(m=>m.cat===menuTabFilter);
 
   const incList = filtered.filter(m => m.side !== 'expense');
   const expList = filtered.filter(m => m.side === 'expense');
@@ -1224,9 +1245,15 @@ function editRecord(id) {
       <label>${isEn?'Total (THB)':'รวม (บาท)'}</label>
       <input type="number" id="er-amount" value="${r.amount}" inputmode="decimal">
     </div>
-    <div class="form-group">
-      <label>${isEn?'Date':'วันที่'}</label>
-      <input type="date" id="er-date" value="${r.date}">
+    <div class="form-row">
+      <div class="form-group">
+        <label>${isEn?'Date':'วันที่'}</label>
+        <input type="date" id="er-date" value="${r.date}">
+      </div>
+      <div class="form-group">
+        <label>${isEn?'Time':'เวลา'}</label>
+        <input type="time" id="er-time" value="${r.time||''}">
+      </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
       <button class="btn btn-outline" onclick="document.getElementById('edit-record-modal').style.display='none'">${isEn?'Cancel':'ยกเลิก'}</button>
@@ -1251,6 +1278,7 @@ function saveEditRecord(id) {
   r.qty       = parseFloat(document.getElementById('er-qty').value)||1;
   r.amount    = parseFloat(document.getElementById('er-amount').value)||0;
   r.date      = document.getElementById('er-date').value;
+  r.time      = document.getElementById('er-time').value||'';
   saveLocal(); pushToFirebase();
   document.getElementById('edit-record-modal').style.display='none';
   showToast(tx('saved')); renderAll();
@@ -1266,7 +1294,7 @@ rowItemHTML = function(r, showDetail=true) {
     <div class="ri-left">
       <div class="ri-desc">${r.desc||'—'}</div>
       <div class="ri-meta">
-        ${r.date} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
+        ${r.date}${r.time?' · '+r.time:''} &nbsp;<span class="badge ${info.cls}">${info.label}</span>
         ${showDetail && qtyText ? `&nbsp;<span class="ri-qty-tag">${qtyText}</span>` : ''}
       </div>
     </div>
